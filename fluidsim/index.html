@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Shadow55AA</title>
+<link rel='stylesheet' href='/main.css'>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body>
+<div id="top">
+<ul class="rootmenu">
+	<li><a href="/index.html">Home</a></li>
+	<li><a href="/index.html#page2">Prjects</a></li>
+</ul>
+</div>
+<div id="page1">
+<canvas id="canv" width="1024" height="560" style="border:1px solid #000000;"></canvas>
+<p id="dbgp"></p>
+<script>
+var c = document.getElementById("canv");
+var ctx = c.getContext("2d");
+var tick=0;
+
+var dt = 1.0/30.0;
+var nsteps = 1;
+var elt=0.0;
+var slipk=1.0;
+var udk = 0.0;
+var tdk = 0.0;
+var bpd = 0.0;
+var inheat = 0.0;
+var fltemp = 0.0;
+var accg = 0.0;
+var bouyred = 0.0;
+var bouyblue = 0.0;
+var restpress = 1.0;
+
+var maxpress = 0.0;
+var minpress = 0.0;
+var maxtemp = 0.0;
+
+var ds = 10;
+var xsections = 90;
+var ysections = 30;
+var bmobile = false;
+if(navigator.userAgent.match(/iPad|iPhone|iPod|Android/i))
+{
+	xsections = 30;
+	ysections = 10;
+	c.width = document.documentElement.clientWidth-20;
+	c.height = document.documentElement.clientHeight-20;
+	bmobile = true;
+}
+var blandscape = false;
+
+var xlength = xsections*ds;
+var ylength = ysections*ds;
+
+var buffsize = (xsections+2)*(ysections+2);
+var dense = new Array(buffsize);
+var dense2 = new Array(buffsize);
+var denseb = new Array(buffsize);
+var denseb2 = new Array(buffsize);
+var u = new Array(buffsize);
+var u2 = new Array(buffsize);
+var v = new Array(buffsize);
+var v2 = new Array(buffsize);
+var p = new Array(buffsize);
+var p2 = new Array(buffsize);
+var diverg = new Array(buffsize);
+var temps = new Array(buffsize);
+var temps2 = new Array(buffsize);
+var wallblocks = new Array(buffsize);
+var ubnodes = new Array(buffsize);
+var vbnodes = new Array(buffsize);
+
+// input
+var mousex = 40;
+var mousey = 40;
+var mousepos = [0,0];
+var mousexrel = 0;
+var mouseyrel = 0;
+var mouseindir = [0,0];
+var lmbutton = 0;
+var mmbutton = 0;
+var keys = [0,0,0,0];
+var bwkey = 0;
+var inputspeed = 2000.0;
+var inputmode = 1;
+
+var nbtns = 9;
+var btnlist = new Array(nbtns);
+btnlist[0] = new Button([10,15],[55,20],"#a0a0a0","Reset");
+btnlist[1] = new Button([c.width/2-80,15],[45,20],"#a0a0a0","Wall");
+btnlist[2] = new Button([c.width/2-30,15],[55,20],"#a0a0a0","Force");
+btnlist[3] = new Button([c.width/2+30,15],[65,20],"#a0a0a0","Smoke");
+btnlist[4] = new Button([c.width/2+100,15],[55,20],"#a0a0a0","Temp");
+btnlist[5] = new Button([c.width/2-125,40],[65,20],"#a0a0a0","Vortex");
+btnlist[6] = new Button([c.width/2-55,40],[80,20],"#a0a0a0","Reyleigh");
+btnlist[7] = new Button([c.width/2+30,40],[60,20],"#a0a0a0","Pillars");
+btnlist[8] = new Button([c.width/2+95,40],[105,20],"#a0a0a0","Subduction");
+var sliderdp = new Slider([200,70],[200,20],bpd);
+var sliderudk = new Slider([200,95],[200,20],0.0);
+var slidertdk = new Slider([200,120],[200,20],0.0);
+var sliderslipk = new Slider([200,145],[200,20],0.0);
+var slidertbouy = new Slider([c.width-220,70],[200,20],0.0);
+var sliderbbouy = new Slider([c.width-220,95],[200,20],0.0);
+var sliderrbouy = new Slider([c.width-220,120],[200,20],0.0);
+var sliderfltemp = new Slider([c.width-220,145],[200,20],0.0);
+var sliderinheat = new Slider([c.width-220,170],[200,20],0.0);
+var cbdispdense = new CheckBox([100,170],[80,20],1,"Smoke");
+var cbdisppress = new CheckBox([190,170],[100,20],0,"Pressure");
+var cbdisptemp = new CheckBox([300,170],[140,20],0,"Tempurature");
+	
+var nparticles = 1000;	
+var plist = new Array(nparticles);
+for(i=0;i<nparticles;i++)
+{
+	plist[i]=new ParticleObj([0.0,0.0]);
+}
+resetSim();
+clearWalls();
+cbdispdense.value=1;
+cbdisppress.value=0;
+cbdisptemp.value=0;
+sliderdp.value=1.0;
+bpd = 1000.0;
+sliderudk.value=0.0;
+udk=0.0;
+slidertdk.value=0.0;
+tdk=0.0;
+sliderslipk.value=0.0;
+slipk=1.0;
+slidertbouy.value=0.0;
+accg=0.0;
+sliderbbouy.value=0.0;
+bouyblue=0.0;
+sliderrbouy.value=0.0;
+bouyred=0.0;
+sliderfltemp.value=0.0;
+fltemp=0.0;
+sliderinheat.value=0.0;
+inheat=0.0;
+if(!bmobile)
+{
+	setWall(4,ysections/2);
+	setWall(4,ysections/2+2);
+	setWall(6,ysections/2-2);
+	setWall(6,ysections/2);
+	setWall(6,ysections/2+2);
+	setWall(6,ysections/2+4);
+	setWall(8,ysections/2-4);
+	setWall(8,ysections/2-2);
+	setWall(8,ysections/2);
+	setWall(8,ysections/2+2);
+	setWall(8,ysections/2+4);
+	setWall(8,ysections/2+6);
+	setWall(10,ysections/2-4);
+	setWall(10,ysections/2-2);
+	setWall(10,ysections/2);
+	setWall(10,ysections/2+2);
+	setWall(10,ysections/2+4);
+	setWall(10,ysections/2+6);
+	setWall(12,ysections/2-2);
+	setWall(12,ysections/2);
+	setWall(12,ysections/2+2);
+	setWall(12,ysections/2+4);
+	setWall(14,ysections/2);
+	setWall(14,ysections/2+2);
+	setVel(8,ysections/2+8,-400.0,0.0);
+	setVel(10,ysections/2+8,-400.0,0.0);
+	setVel(12,ysections/2+8,-400.0,0.0);
+	setVel(14,ysections/2+8,-400.0,0.0);
+	setVel(16,ysections/2+8,-400.0,0.0);
+	setVel(18,ysections/2+8,-400.0,0.0);
+}
+else
+{
+	setWall(6,ysections/2);
+	setWall(6,ysections/2+2);
+	setVel(4,ysections/2+4,-400.0,0.0);
+	setVel(6,ysections/2+4,-400.0,0.0);
+	setVel(8,ysections/2+4,-400.0,0.0);
+}
+
+document.addEventListener('keydown',onKeyD);
+document.addEventListener('keyup',onKeyU);
+c.addEventListener('mousedown',onMouseDown);
+c.addEventListener('mouseup',onMouseUp);
+c.addEventListener('mousemove',onMouseM);
+setInterval(update,33);
+
+function resetSim()
+{
+	tick=0;
+	for(i=0;i<nparticles;i++)
+	{
+		plist[i].pos[0]=Math.random()*xlength;
+		plist[i].pos[1]=Math.random()*ylength;
+	}
+	for(i=0;i<buffsize;i++)
+	{
+		p[i] = restpress;
+		p2[i] = restpress;
+		diverg[i] = 0.0;
+		temps[i]= 0.0;
+		temps2[i]= 0.0;
+		u[i]=0.0;
+		u2[i]=0.0;
+		v[i]=0.0;
+		v2[i]=0.0;
+		dense[i]=0.0;
+		dense2[i]=0.0;
+		denseb[i]=0.0;
+		denseb2[i]=0.0;
+	}
+	for(i=0;i<xsections+2;i++)
+	{
+		temps[i+1*(xsections+2)]=Math.sin(Math.random()*Math.PI*i/(xsections+2.0));
+		temps2[i+1*(xsections+2)]=Math.sin(Math.random()*Math.PI*i/(xsections+2.0));
+		temps[i+(ysections)*(xsections+2)]=Math.sin(Math.random()*Math.PI*i/(xsections+2.0));
+		temps2[i+(ysections)*(xsections+2)]=Math.sin(Math.random()*Math.PI*i/(xsections+2.0));
+	}
+}
+
+function clearWalls()
+{
+	for(i=0;i<buffsize;i++)
+	{
+		wallblocks[i] = 0;
+		ubnodes[i] = 0;
+		vbnodes[i] = 0;
+	}
+}
+
+function update()
+{
+	if(bmobile&&!blandscape)
+	{
+		if(screen.width>=screen.height)
+		{
+			c.width = document.documentElement.clientWidth-20;
+			c.height = document.documentElement.clientHeight-20;
+			btnlist[1].pos[0] = c.width/2-80;
+			btnlist[2].pos[0] = c.width/2-30;
+			btnlist[3].pos[0] = c.width/2+30;
+			btnlist[4].pos[0] = c.width/2+100;
+			btnlist[5].pos[0] = c.width/2-125;
+			btnlist[6].pos[0] = c.width/2-55;
+			btnlist[7].pos[0] = c.width/2+30;
+			btnlist[8].pos[0] = c.width/2+95;
+			slidertbouy.pos[0] = c.width-220;
+			sliderbbouy.pos[0] = c.width-220;
+			sliderrbouy.pos[0] = c.width-220;
+			sliderfltemp.pos[0] = c.width-220;
+			sliderinheat.pos[0] = c.width-220;
+			blandscape=true;
+		}
+	}
+	if(bmobile&&screen.width<screen.height)
+	{
+		if(blandscape=true)
+		{
+			c.width = document.documentElement.clientWidth-20;
+			c.height = document.documentElement.clientHeight-20;
+		}
+		ctx.clearRect(0,0,c.width,c.height);
+		ctx.fillStyle = "#ffffff";
+		if(!bmobile)
+			ctx.font="20px Arial";
+		else
+			ctx.font="12px Arial";
+		ctx.fillText("Please Rotate Device:",c.width/2,c.height/2);
+		blandscape=false;
+		return;
+	}
+	ctx.clearRect(0,0,c.width,c.height);
+	// render
+	var tx,ty;
+	for(i=0;i<xsections+2;i++)
+	{
+		for(j=0;j<ysections+2;j++)
+		{
+			tx = Math.floor(c.width/2)-ds*(xsections+2)/2+i*ds;
+			ty = c.height-ds*(ysections+2)+j*ds;
+			if(wallblocks[Math.floor(i/2)+Math.floor(j/2)*(xsections+2)]>0)
+				drawWall(tx,ty);
+			else
+			{
+				/*if(cbdispdense.value==1)
+					drawCell(tx,ty,i,j);
+				else if(cbdisppress.value==1)
+					drawCell(tx,ty,p[i+j*(xsections+2)]);
+				else
+					drawCell(tx,ty,temps[i+j*(xsections+2)]);*/
+				drawCell(tx,ty,i,j);
+			}
+		}
+	}
+	for(i=0;i<nparticles;i++)
+		plist[i].render();
+	if(!bmobile)
+	{
+		for(i=0;i<nbtns;i++)
+			btnlist[i].render();
+	}
+	else
+	{
+		for(i=5;i<nbtns;i++)
+			btnlist[i].render();
+	}
+	if(!bmobile)
+	{
+		sliderdp.render();
+		sliderudk.render();
+		slidertdk.render();
+		sliderslipk.render();
+		slidertbouy.render();
+		sliderrbouy.render();
+		sliderbbouy.render();
+		sliderfltemp.render();
+		sliderinheat.render();
+		cbdispdense.render();
+		cbdisppress.render();
+		cbdisptemp.render();
+	}
+	ctx.fillStyle = "#ffffff";
+	if(!bmobile)
+		ctx.font="20px Arial";
+	else
+		ctx.font="12px Arial";
+	if(!bmobile)
+	{
+		ctx.fillText("Tools:",c.width/2-240,35);
+		ctx.fillText("Use tool: left click and 'q'",c.width/2+200,35);
+		ctx.fillText("Presets:",c.width/2-240,60);
+		ctx.fillText("Pressure Difference:",10,85);
+		ctx.fillText("Kinematic Viscosity:",10,110);
+		ctx.fillText("Thermal Diffusivity:",10,135);
+		ctx.fillText("Wall friction:",10,160);
+		ctx.fillText("Display:",10,185);
+		ctx.fillText("Thermal Bouyancy:",c.width-400,85);
+		ctx.fillText("Blue Bouyancy:",c.width-400,110);
+		ctx.fillText("Red Bouyancy:",c.width-400,135);
+		ctx.fillText("Floor Tempurature:",c.width-400,160);
+		ctx.fillText("Internal Heating:",c.width-400,185);
+	
+		ctx.fillStyle = "#0000ff";
+		ctx.fillRect(mousepos[0]-ds,mousepos[1]-ds,ds,ds);
+	}
+	// Simulate
+	for(i=0;i<nparticles;i++)
+		plist[i].step(dt);
+	for(k=0;k<nsteps;k++)
+	{
+		if(udk>=0.1)
+		{
+			//preDiffuse(4,dense,dt/nsteps,udk);
+			//jacobiMethod(4,dense,dense2,4.0+ds*ds/(udk*(dt/nsteps)));
+			//preDiffuse(4,denseb,dt/nsteps,udk);
+			//jacobiMethod(4,denseb,denseb2,4.0+ds*ds/(udk*(dt/nsteps)));
+			preDiffuse(1,u,dt/nsteps,udk);
+			jacobiMethod(1,u,u2,4.0+ds*ds/(udk*(dt/nsteps)));
+			preDiffuse(2,v,dt/nsteps,udk);
+			jacobiMethod(2,v2,v2,4.0+ds*ds/(udk*(dt/nsteps)));
+		}
+		advect(4,dense,dense2,dt/nsteps);
+		advect(4,denseb,denseb2,dt/nsteps);
+		setBound(4,dense);
+		setBound(4,denseb);
+		advect(3,temps,temps2,dt/nsteps);
+		if(inheat>0.0001)
+		{
+			for(i=1;i<xsections+1;i++)
+			{
+				for(j=1;j<ysections+1;j++)
+				{
+					if(temps[i+j*(xsections+2)]<400.0)
+						temps[i+j*(xsections+2)]+=inheat*dt/nsteps;
+				}
+			}
+		}
+		setBound(3,temps);
+		if(tdk>=0.1)
+		{
+			preDiffuse(3,temps,dt/nsteps,tdk);
+			jacobiMethod(3,temps,temps2,4.0+ds*ds/(tdk*(dt/nsteps)));
+		}
+		advect(1,u,u2,dt/nsteps);
+		advect(2,v,v2,dt/nsteps);
+		if(accg>=0.1)
+		{
+			thermalBuoyancy(dt/nsteps);
+		}
+		tracerBuoyancy(dt/nsteps);
+		if(bpd>0.01)
+		{
+			for(j=ysections/2-1;j<=ysections/2;j++)
+			{
+				dense[0+j*(xsections+2)]=255;
+				dense[1+j*(xsections+2)]=255;
+			}
+			for(j=ysections/2+1;j<=ysections/2+2;j++)
+			{
+				denseb[0+j*(xsections+2)]=255;
+				denseb[1+j*(xsections+2)]=255;
+			}
+		}
+		setBound(1,u);
+		setBound(2,v);
+		divergence();
+		jacobiMethod(0,p,p2,4.0);
+		applyPressure();
+		
+		tick++;
+		if(tick>400)
+		{
+			tick=0;
+		}
+	}
+	elt+=dt;
+	
+	maxpress=0.0;
+	minpress=1000.0;
+	for(i=0;i<xsections+2;i++)
+	{
+		for(j=0;j<ysections+2;j++)
+		{
+			if(p[i+j*(xsections+2)]>maxpress)
+				maxpress=p[i+j*(xsections+2)];
+			if(p[i+j*(xsections+2)]<minpress)
+				minpress=p[i+j*(xsections+2)];
+		}
+	}
+	maxtemp=0.0;
+	for(i=0;i<xsections+2;i++)
+	{
+		for(j=0;j<ysections+2;j++)
+		{
+			if(temps[i+j*(xsections+2)]>maxtemp)
+				maxtemp=temps[i+j*(xsections+2)];
+		}
+	}
+	// Input
+	addMouseInput();
+}
+
+function advect(b,ifield,ifield2,idt)
+{
+	var du,dv;
+	var xloop = xsections+1;
+	var yloop = ysections+1;
+	if(b==1)
+		xloop--;
+	if(b==2)
+		yloop--;
+	for(i=1;i<xloop;i++)
+	{
+		for(j=1;j<yloop;j++)
+		{
+			du=0;dv=0;
+			if(b==0||b==4)
+			{
+				if(wallblocks[Math.floor(i/2.0)+Math.floor(j/2.0)*(xsections+2)]==0)
+				{
+					du = -getInterp(1,i-0.5,j,u)*idt/ds+i;
+					dv = -getInterp(2,i,j-0.5,v)*idt/ds+j;
+					ifield2[i+j*(xsections+2)] = getInterp(b,du,dv,ifield);
+				}
+			}
+			else if(b==1)
+			{
+				du = -u[i+j*(xsections+2)]*idt/ds+i;
+				dv = -getInterp(2,i+0.5,j-0.5,v)*idt/ds+j;
+				ifield2[i+j*(xsections+2)] = getInterp(b,du,dv,ifield);
+			}
+			else if(b==2)
+			{
+				du = -getInterp(1,i-0.5,j+0.5,u)*idt/ds+i;
+				dv = -v[i+j*(xsections+2)]*idt/ds+j;
+				ifield2[i+j*(xsections+2)] = getInterp(b,du,dv,ifield);
+			}
+			else if(b==3)
+			{
+				if(wallblocks[Math.floor(i/2.0)+Math.floor(j/2.0)*(xsections+2)]==0)
+				{
+					du = -getInterp(1,i-0.5,j,u)*idt/ds+i;
+					dv = -getInterp(2,i,j-0.5,v)*idt/ds+j;
+					ifield2[i+j*(xsections+2)] = getInterp(b,du,dv,ifield);
+				}
+			}
+		}
+	}
+	for(i=0;i<buffsize;i++)
+		ifield[i]=ifield2[i];
+}
+
+function clipBounds(b,ix,iy)
+{
+	if(ix<0.0)
+		ix=0.0;
+	if(iy<0.0)
+		iy=0.0;
+	if(b==0)
+	{
+		if(ix>xsections+1.0)
+			ix=xsections+1.0;
+		if(iy>ysections+1.0)
+			iy=ysections+1.0;
+	}
+	else if(b==1)
+	{
+		if(ix>xsections)
+			ix=xsections;
+		if(iy>ysections+1.0)
+			iy=ysections+1.0;
+	}
+	else if(b==2)
+	{
+		if(ix>xsections+1.0)
+			ix=xsections+1.0;
+		if(iy>ysections)
+			iy=ysections;
+	}
+}
+
+function getInterp(b,ix,iy,ifield)
+{
+	clipBounds(b,ix,iy);
+	var wu = Math.floor(ix);
+	var wv = Math.floor(iy);
+	var fu = ix-wu;
+	var fv = iy-wv;
+	var tdx = ifield[wu+wv*(xsections+2)]*(1.0-fu)+fu*ifield[wu+1+wv*(xsections+2)];
+	var tdx2 = ifield[wu+(wv+1)*(xsections+2)]*(1.0-fu)+fu*ifield[wu+1+(wv+1)*(xsections+2)];
+	return tdx*(1.0-fv)+tdx2*fv;
+}
+
+function divergence()
+{
+	for(i=1;i<xsections+1;i++)
+	{
+		for(j=1;j<ysections+1;j++)
+		{
+			diverg[i+j*(xsections+2)] = (u[i+j*(xsections+2)]-u[i-1+j*(xsections+2)])/(ds)+
+					 (v[i+j*(xsections+2)]-v[i+(j-1)*(xsections+2)])/(ds);
+			diverg[i+j*(xsections+2)] = -diverg[i+j*(xsections+2)]*(ds*ds);
+		}
+	}
+}
+
+function preDiffuse(b,ifield,idt,icoef)
+{
+	var xloop = xsections+1;
+	if(b==1)
+		xloop--;
+	var yloop = ysections+1;
+	if(b==2)
+		yloop--;
+	for(i=1;i<xloop;i++)
+	{
+		for(j=1;j<yloop;j++)
+		{
+			diverg[i+j*(xsections+2)] = ds*ds*ifield[i+j*(xsections+2)]/(icoef*idt);
+		}
+	}
+}
+
+function jacobiMethod(b,ifield,ifield2,ia)
+{
+	var xloop = xsections+1;
+	if(b==1)
+		xloop--;
+	var yloop = ysections+1;
+	if(b==2)
+		yloop--;
+	var dimax,tpress;
+	var twbc,twbin,twbip,twbjn,twbjp;
+	for(k=0;k<100;k++)
+	{
+		dimax=0.0;
+		for(i=1;i<xloop;i++)
+		{
+			for(j=1;j<yloop;j++)
+			{
+				if(b!=0)
+				{
+					ifield2[i+j*(xsections+2)] =(diverg[i+j*(xsections+2)]+ifield[i+1+j*(xsections+2)]+ifield[i-1+j*(xsections+2)]+ifield[i+(j+1)*(xsections+2)]+ifield[i+(j-1)*(xsections+2)])/ia;
+					if(Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)])>dimax)
+						dimax=Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)]);
+				}
+				else if(b==1)
+				{
+					twbc = ubnodes[i+j*(xsections+2)];
+					if(twbc==0)
+					{
+						twbin = ubnodes[Math.floor((i-1)/2)+Math.floor(j/2)*(xsections+2)];
+						twbip = ubnodes[Math.floor((i+1)/2)+Math.floor(j/2)*(xsections+2)];
+						twbjn = ubnodes[Math.floor(i/2)+Math.floor((j-1)/2)*(xsections+2)];
+						twbjp = ubnodes[Math.floor(i/2)+Math.floor((j+1)/2)*(xsections+2)];
+						tpress=diverg[i+j*(xsections+2)];
+						if(twbin==0)
+							tpress+=ifield[i-1+j*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbip==0)
+							tpress+=ifield[i+1+j*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbjn==0)
+							tpress+=ifield[i+(j-1)*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbjp==0)
+							tpress+=ifield[i+(j+1)*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						ifield2[i+j*(xsections+2)] = tpress/4.0;
+						if(Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)])>dimax)
+							dimax=Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)]);
+					}
+				}
+				else if(b==2)
+				{
+					twbc = vbnodes[i+j*(xsections+2)];
+					if(twbc==0)
+					{
+						twbin = vbnodes[Math.floor((i-1)/2)+Math.floor(j/2)*(xsections+2)];
+						twbip = vbnodes[Math.floor((i+1)/2)+Math.floor(j/2)*(xsections+2)];
+						twbjn = vbnodes[Math.floor(i/2)+Math.floor((j-1)/2)*(xsections+2)];
+						twbjp = vbnodes[Math.floor(i/2)+Math.floor((j+1)/2)*(xsections+2)];
+						tpress=diverg[i+j*(xsections+2)];
+						if(twbin==0)
+							tpress+=ifield[i-1+j*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbip==0)
+							tpress+=ifield[i+1+j*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbjn==0)
+							tpress+=ifield[i+(j-1)*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbjp==0)
+							tpress+=ifield[i+(j+1)*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						ifield2[i+j*(xsections+2)] = tpress/4.0;
+						if(Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)])>dimax)
+							dimax=Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)]);
+					}
+				}
+				else
+				{
+					twbc = wallblocks[Math.floor(i/2)+Math.floor(j/2)*(xsections+2)];
+					if(twbc==0)
+					{
+						twbin = wallblocks[Math.floor((i-1)/2)+Math.floor(j/2)*(xsections+2)];
+						twbip = wallblocks[Math.floor((i+1)/2)+Math.floor(j/2)*(xsections+2)];
+						twbjn = wallblocks[Math.floor(i/2)+Math.floor((j-1)/2)*(xsections+2)];
+						twbjp = wallblocks[Math.floor(i/2)+Math.floor((j+1)/2)*(xsections+2)];
+						tpress=diverg[i+j*(xsections+2)];
+						if(twbin==0)
+							tpress+=ifield[i-1+j*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbip==0)
+							tpress+=ifield[i+1+j*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbjn==0)
+							tpress+=ifield[i+(j-1)*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						if(twbjp==0)
+							tpress+=ifield[i+(j+1)*(xsections+2)];
+						else
+							tpress+=ifield[i+j*(xsections+2)];
+						ifield2[i+j*(xsections+2)] = tpress/4.0;
+						if(Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)])>dimax)
+							dimax=Math.abs(ifield2[i+j*(xsections+2)]-ifield[i+j*(xsections+2)]);
+					}
+				}
+			}
+		}
+		for(i=0;i<buffsize;i++)
+			ifield[i]=ifield2[i];
+		setBound(b,ifield);
+		if(dimax<0.1)
+		{
+			k=1000;
+		}
+	}
+}
+
+function applyPressure()
+{
+	var twbc;
+	for(i=0;i<xsections+1;i++)
+	{
+		for(j=0;j<ysections+2;j++)
+		{
+			u[i+j*(xsections+2)]-=(p[i+1+j*(xsections+2)]-p[i+j*(xsections+2)])/(ds);
+		}
+	}
+	for(i=0;i<xsections+2;i++)
+	{
+		for(j=0;j<ysections+1;j++)
+		{
+			v[i+j*(xsections+2)]-=(p[i+(j+1)*(xsections+2)]-p[i+j*(xsections+2)])/(ds);
+		}
+	}
+	setBound(1,u);
+	setBound(2,v);
+}
+
+function thermalBuoyancy(idt)
+{
+	for(i=1;i<xsections+1;i++)
+	{
+		for(j=1;j<ysections+1;j++)
+		{
+			v[i+j*(xsections+2)]-=accg*(temps[i+j*(xsections+2)])*idt/273.0;
+		}
+	}
+}
+
+function tracerBuoyancy(idt)
+{
+	if(bouyblue>0.001)
+	{
+		for(i=1;i<xsections+1;i++)
+		{
+			for(j=1;j<ysections+1;j++)
+			{
+				v[i+j*(xsections+2)]+=bouyblue*(denseb[i+j*(xsections+2)])*idt/273.0;
+			}
+		}
+	}
+	if(bouyred>0.001)
+	{
+		for(i=1;i<xsections+1;i++)
+		{
+			for(j=1;j<ysections+1;j++)
+			{
+				v[i+j*(xsections+2)]-=bouyred*(dense[i+j*(xsections+2)])*idt/273.0;
+			}
+		}
+	}
+}
+
+function setBound(itype,ifield)
+{
+	setBoundBlocks(itype,ifield);
+	
+	//Hbounds
+	for(i=0;i<xsections+2;i++)
+	{
+		if(itype==1)	// u
+		{
+			ifield[i]=slipk*ifield[i+(xsections+2)];
+			ifield[i+(ysections+1)*(xsections+2)]=slipk*ifield[i+(ysections)*(xsections+2)];
+		}
+		else if(itype==2)	// v
+		{
+			ifield[i]=0.0;
+			ifield[i+(ysections)*(xsections+2)]=0.0;
+		}
+		else if(itype==0)	// pressure
+		{
+			ifield[i]=ifield[i+(xsections+2)];
+			ifield[i+(ysections+1)*(xsections+2)]=ifield[i+(ysections)*(xsections+2)];
+		}
+		else if(itype==3)	// Tempurature
+		{
+			//temps[i]=temps[i+(xsections+2)];
+			temps[i]=0.0-temps[i+(xsections+2)];
+			if(fltemp>0.001)
+				temps[i+(ysections+1)*(xsections+2)]=2.0*fltemp-temps[i+(ysections)*(xsections+2)];
+			else
+				temps[i+(ysections+1)*(xsections+2)]=temps[i+(ysections)*(xsections+2)];
+			//temps[i+(ysections+1)*(xsections+2)]=-200*Math.cos(i*6.0*Math.PI/xsections)-temps[i+(ysections)*(xsections+2)];
+			//if(i<xsections/3)
+			//	temps[i+(ysections+1)*(xsections+2)]=2.0*tl-temps[i+(ysections)*(xsections+2)];
+		}
+		else if(itype==4)	// Density
+		{
+			ifield[i]=ifield[i+(xsections+2)];
+			ifield[i+(ysections+1)*(xsections+2)]=ifield[i+(ysections)*(xsections+2)];
+		}
+	}
+	//Vbounds
+	for(j=0;j<ysections+2;j++)
+	{
+		if(itype==1)	// u
+		{
+			if(bpd<0.01)
+			{
+				ifield[j*(xsections+2)]=0.0;
+				ifield[(xsections)+j*(xsections+2)]=0.0;
+			}
+			else
+			{
+				ifield[j*(xsections+2)]=-(p[1+j*(xsections+2)]-p[1+j*(xsections+2)])/ds;
+				ifield[(xsections)+j*(xsections+2)]=-(p[(xsections+1)+j*(xsections+2)]-p[(xsections)+j*(xsections+2)])/ds;
+			}
+		}
+		else if(itype==2)	// v
+		{
+			ifield[j*(xsections+2)]=slipk*ifield[1+j*(xsections+2)];
+			ifield[(xsections+1)+j*(xsections+2)]=slipk*ifield[(xsections)+j*(xsections+2)];
+		}
+		else if(itype==0)
+		{
+			if(bpd<0.01)
+			{
+				ifield[j*(xsections+2)]=ifield[1+j*(xsections+2)];
+				ifield[(xsections+1)+j*(xsections+2)]=ifield[(xsections)+j*(xsections+2)];
+			}
+			else
+			{
+				ifield[j*(xsections+2)]=restpress+bpd;
+				ifield[(xsections+1)+j*(xsections+2)]=restpress-bpd;
+			}
+		}
+		else if(itype==3)
+		{
+			if(bpd<0.01)
+				temps[j*(xsections+2)]=temps[1+j*(xsections+2)];
+			else
+				temps[j*(xsections+2)]=0.0-temps[1+j*(xsections+2)];
+			temps[xsections+1+j*(xsections+2)]=temps[xsections+j*(xsections+2)];
+		}
+		else if(itype==4)	// Dense
+		{
+			if(bpd>0.01)
+			{
+				ifield[j*(xsections+2)]=0.0;
+			}
+			else
+				ifield[j*(xsections+2)]=ifield[1+j*(xsections+2)];
+			ifield[(xsections+1)+j*(xsections+2)]=ifield[(xsections)+j*(xsections+2)];
+		}
+	}
+	//if(itype==3&&bpd>0.1)
+	//	temps[(ysections)*(xsections+2)]=Math.random()*100;
+}
+
+function setBoundBlocks(itype,ifield)
+{
+	if(itype==1)
+	{
+		for(i=1;i<xsections;i++)
+		{
+			for(j=1;j<ysections+1;j++)
+			{
+				if(ubnodes[i+j*(xsections+2)]>0)
+				{
+					if(i%2==1&&(ubnodes[i+1+j*(xsections+2)]==0||ubnodes[i-1+j*(xsections+2)]==0))
+						u[i+j*(xsections+2)]=0.0;
+					else
+					{
+						if(j%2==1)
+						{
+							if(ubnodes[i+(j+1)*(xsections+2)]<1)
+								u[i+j*(xsections+2)]=slipk*u[i+(j+1)*(xsections+2)];
+							else
+								u[i+j*(xsections+2)]=0.0;
+						}
+						else
+						{
+							if(ubnodes[i+(j-1)*(xsections+2)]<1)
+								u[i+j*(xsections+2)]=slipk*u[i+(j-1)*(xsections+2)];
+							else
+								u[i+j*(xsections+2)]=0.0;
+						}
+					}
+				}
+			}
+		}
+	}
+	else if(itype==2)
+	{
+		for(i=1;i<xsections;i++)
+		{
+			for(j=1;j<ysections+1;j++)
+			{
+				if(vbnodes[i+j*(xsections+2)]>0)
+				{
+					if(j%2==1&&(vbnodes[i+(j+1)*(xsections+2)]==0||vbnodes[i+(j-1)*(xsections+2)]==0))
+						v[i+j*(xsections+2)]=0.0;
+					else
+					{
+						if(i%2==1)
+						{
+							if(vbnodes[i+1+j*(xsections+2)]<1)
+								v[i+j*(xsections+2)]=slipk*v[i+1+j*(xsections+2)];
+							else
+								v[i+j*(xsections+2)]=0.0;
+						}
+						else
+						{
+							if(vbnodes[i-1+j*(xsections+2)]<1)
+								v[i+j*(xsections+2)]=slipk*v[i-1+j*(xsections+2)];
+							else
+								v[i+j*(xsections+2)]=0.0;
+						}
+					}
+				}
+			}
+		}
+	}
+	else if(itype==4)
+	{
+		for(i=1;i<xsections+1;i++)
+		{
+			for(j=1;j<ysections+1;j++)
+			{
+				var twbc = wallblocks[Math.floor(i/2)+Math.floor(j/2)*(xsections+2)];
+				if(twbc==1)
+				{
+					if(i%2==1)
+						ifield[i+j*(xsections+2)]=ifield[i+1+j*(xsections+2)];
+					else
+						ifield[i+j*(xsections+2)]=ifield[i-1+j*(xsections+2)];
+					if(j%2==1)
+						ifield[i+j*(xsections+2)]=ifield[i+(j+1)*(xsections+2)];
+					else
+						ifield[i+j*(xsections+2)]=ifield[i+(j-1)*(xsections+2)];
+				}
+			}
+		}
+	}
+}
+
+function drawCell(ix,iy,ii,ij)
+{
+	var maxdense=255.0;
+	var mindense=-255.0;
+	var tgreen = 0.0;
+	var tblue = 0.0;
+	var tmpt = 0;
+	if(cbdisppress.value==1)
+	{
+		maxdense=maxpress;
+		mindense=minpress;
+		tgreen = Math.max(255*p[ii+ij*(xsections+2)]/maxdense,0.0);
+		tblue = Math.max(255*p[ii+ij*(xsections+2)]/mindense,0.0);
+		ctx.fillStyle = "rgb(0,"+Math.floor(tgreen)+","+Math.floor(tblue)+")";
+	}
+	else if(cbdisptemp.value==1)
+	{
+		maxdense=maxtemp;
+		if(maxdense<100.0)
+			maxdense=100.0;
+		tmpt = temps[ii+ij*(xsections+2)];
+		if(tmpt>maxtemp)
+			tmpt=maxtemp;
+		tgreen = tmpt*255.0/maxdense;
+		tblue = (maxdense-tmpt)*255.0/maxdense;
+		ctx.fillStyle = "rgb("+Math.floor(tgreen)+",0,"+Math.floor(tblue)+")";
+	}
+	else
+	{
+		tgreen = Math.max(255*dense[ii+ij*(xsections+2)]/maxdense,0.0);
+		tblue = Math.max(255*denseb[ii+ij*(xsections+2)]/maxdense,0.0);
+		ctx.fillStyle = "rgb("+Math.floor(tgreen)+",0,"+Math.floor(tblue)+")";
+	}
+	ctx.fillRect(ix-ds/2,iy-ds/2,ds,ds);
+}
+
+function drawWall(ix,iy)
+{
+	ctx.fillStyle = "#808080";
+	ctx.fillRect(ix-ds/2,iy-ds/2,ds,ds);
+}
+
+function ParticleObj(ipos)
+{
+	this.pos = [ipos[0],ipos[1]];
+	
+	this.render =
+	function render()
+	{
+		var tx = (this.pos[0]*ds*xsections/xlength+(c.width/2-(xsections+2)*ds/2));
+		var ty = (this.pos[1]*ds*ysections/ylength+(c.height-(ysections+2)*ds));
+		ctx.fillStyle="#00ff00";
+		ctx.fillRect(tx-1,ty-1,2,2);
+	}
+	
+	this.step =
+	function step(idt)
+	{
+		var tx,ty,wx,wy,fx,fy,xb,xb2;
+		tx = (this.pos[0])*xsections/xlength;
+		ty = (this.pos[1])*ysections/ylength;
+		if(tx<0)
+			tx=0;
+		if(ty<0)
+			ty=0;
+		if(tx>xsections+1)
+			tx=xsections+1;
+		if(ty>ysections+1)
+			ty=ysections+1;
+		this.pos[0]+=getInterp(1,tx-0.5,ty,u)*idt;
+		this.pos[1]+=getInterp(2,tx,ty-0.5,v)*idt;
+		if(this.pos[0]>xlength&&bpd>=0.1)
+		{
+			this.pos[0]=ds*1.5;
+			this.pos[1]=Math.random()*ylength;
+			//if(Math.random()*100>50)
+			//	this.pos[1]=c.height/2-(ysections)*ds/2+Math.random()*(ysections)*ds/3.0;
+			//else
+			//	this.pos[1]=c.height/2+(ysections)*ds/2-Math.random()*(ysections)*ds/3.0-ds;
+		}
+	}
+}
+
+function Button(ipos,isize,icolor,itext)
+{
+	this.pos = [ipos[0],ipos[1]];
+	this.size = [isize[0],isize[1]];
+	this.color = icolor;
+	this.text = itext;
+	
+	this.render = function render()
+	{
+		ctx.fillStyle = "#404040";
+		if((mousepos[0]>this.pos[0]&&mousepos[0]<this.pos[0]+this.size[0])
+			&&(mousepos[1]>this.pos[1]&&mousepos[1]<this.pos[1]+this.size[1]))
+			ctx.fillStyle ="#8080ff";
+		ctx.fillRect(this.pos[0],this.pos[1],this.size[0],this.size[1]);
+		ctx.font="20px Georgia";
+		ctx.fillStyle ="#ffffff";
+		ctx.fillText(this.text,this.pos[0],this.pos[1]+18);
+	}
+	
+	this.checkBounds = function checkBounds(ipoint)
+	{
+		var bhit = false;
+		if((ipoint[0]>this.pos[0]&&ipoint[0]<this.pos[0]+this.size[0])
+			&&(ipoint[1]>this.pos[1]&&ipoint[1]<this.pos[1]+this.size[1]))
+			bhit = true;
+		return bhit;
+	}
+}
+
+function CheckBox(ipos,isize,ivalue,itext)
+{
+	this.pos = [ipos[0],ipos[1]];
+	this.size = [isize[0],isize[1]];
+	this.value = ivalue;
+	this.text = itext;
+	
+	this.render = function render()
+	{
+		ctx.fillStyle = "#ffffff";
+		ctx.strokeStyle = "#ffffff";
+		if(this.value==1)
+			ctx.fillRect(this.pos[0]+this.size[0]-20,this.pos[1],20,20);
+		else
+			ctx.strokeRect(this.pos[0]+this.size[0]-20,this.pos[1],20,20);
+		ctx.font="20px Georgia";
+		ctx.fillText(this.text,this.pos[0],this.pos[1]+18);
+	}
+	
+	this.checkBounds = function checkBounds(ipoint)
+	{
+		var bhit = false;
+		if((ipoint[0]>this.pos[0]&&ipoint[0]<this.pos[0]+this.size[0])
+			&&(ipoint[1]>this.pos[1]&&ipoint[1]<this.pos[1]+this.size[1]))
+		{
+			bhit = true;
+		}
+		return bhit;
+	}
+}
+
+function Slider(ipos,isize,ivalue)
+{
+	this.pos = [ipos[0],ipos[1]];
+	this.size = [isize[0],isize[1]];
+	this.value = ivalue;
+	
+	this.render = function render()
+	{
+		ctx.fillStyle ="#ff0000";
+		ctx.fillRect(this.pos[0],this.pos[1],this.size[0],this.size[1]);
+		ctx.fillStyle ="#00ff00";
+		ctx.fillRect(this.pos[0],this.pos[1],this.value*this.size[0],this.size[1]);
+	}
+	
+	this.checkMouse = function checkMouse(imouse)
+	{
+		var tvalue = 0.0;
+		if((imouse[0]>this.pos[0]&&imouse[0]<this.pos[0]+this.size[0])
+			&&(imouse[1]>this.pos[1]&&imouse[1]<this.pos[1]+this.size[1]))
+		{
+			this.value = (imouse[0]-this.pos[0])/this.size[0];
+			if(this.value<0.02)
+				this.value=0.0;
+			if(this.value>0.98)
+				this.value=1.0;
+		}
+		return this.value;
+	}
+}
+
+function onKeyD(event)
+{
+	if(event.keyCode==81)
+		bwkey=1;
+	if(event.keyCode==65)
+		keys[0]=1;
+	if(event.keyCode==68)
+		keys[1]=1;
+	if(event.keyCode==87)
+		keys[2]=1;
+	if(event.keyCode==83)
+		keys[3]=1;
+}
+
+function onKeyU(event)
+{
+	if(event.keyCode==81)
+		bwkey=0;
+	if(event.keyCode==65)
+		keys[0]=0;
+	if(event.keyCode==68)
+		keys[1]=0;
+	if(event.keyCode==87)
+		keys[2]=0;
+	if(event.keyCode==83)
+		keys[3]=0;
+}
+
+function onMouseDown(event)
+{
+	if(event.button==0)
+		lmbutton=1;
+	if(event.button==1)
+		mmbutton=1;
+}
+
+function setDense(b,ix,iy,idense)
+{
+	var tx = Math.floor(ix/2);
+	var ty = Math.floor(iy/2);
+	if(b==0)
+	{
+		dense[tx*2+ty*2*(xsections+2)]=idense;
+		dense[tx*2+1+ty*2*(xsections+2)]=idense;
+		dense[tx*2+(ty*2+1)*(xsections+2)]=idense;
+		dense[tx*2+1+(ty*2+1)*(xsections+2)]=idense;
+	}
+	else
+	{
+		denseb[tx*2+ty*2*(xsections+2)]=idense;
+		denseb[tx*2+1+ty*2*(xsections+2)]=idense;
+		denseb[tx*2+(ty*2+1)*(xsections+2)]=idense;
+		denseb[tx*2+1+(ty*2+1)*(xsections+2)]=idense;
+	}
+}
+
+function setVel(ix,iy,ivx,ivy)
+{
+	ti=Math.floor(ix/2.0);
+	tj=Math.floor(iy/2.0);
+	if(wallblocks[ti+tj*(xsections+2)]==0)
+	{
+		for(i=0;i<3;i++)
+		{
+			u[ti*2-1+i+tj*2*(xsections+2)]+=ivx;
+			v[ti*2-1+i+(tj*2+1)*(xsections+2)]+=ivy;
+			u[ti*2+(tj*2-1+i)*(xsections+2)]+=ivx;
+			v[ti*2+1+(tj*2-1+i)*(xsections+2)]+=ivy;
+		}
+	}
+}
+
+function setWall(ix,iy)
+{
+	var ti=Math.floor(ix/2.0);
+	var tj=Math.floor(iy/2.0);
+	if(wallblocks[ti+tj*(xsections+2)]==0)
+	{
+		wallblocks[ti+tj*(xsections+2)]=1;
+		for(i=0;i<3;i++)
+		{
+			ubnodes[ti*2-1+i+tj*2*(xsections+2)]++;
+			ubnodes[ti*2-1+i+(tj*2+1)*(xsections+2)]++;
+			vbnodes[ti*2+(tj*2-1+i)*(xsections+2)]++;
+			vbnodes[ti*2+1+(tj*2-1+i)*(xsections+2)]++;
+		}
+	}
+}
+
+function addMouseInput()
+{
+	if(bmobile)
+		return;
+	if(lmbutton==1)
+	{
+		var mxspeed = inputspeed*mouseindir[0];
+		var myspeed = inputspeed*mouseindir[1];
+		var ti = Math.floor((mousepos[0]-(c.width/2-(xsections+2)*ds/2))/ds);
+		var tj = Math.floor((mousepos[1]-(c.height-(ysections+2)*ds))/ds);
+		if((ti>0&&ti<xsections+1)&&(tj>0&&tj<ysections+1))
+		{
+			if(inputmode==0)
+			{
+				ti=Math.floor(ti/2.0);
+				tj=Math.floor(tj/2.0);
+				if(wallblocks[ti+tj*(xsections+2)]==0)
+				{
+					wallblocks[ti+tj*(xsections+2)]=1;
+					for(i=0;i<3;i++)
+					{
+						ubnodes[ti*2-1+i+tj*2*(xsections+2)]++;
+						ubnodes[ti*2-1+i+(tj*2+1)*(xsections+2)]++;
+						vbnodes[ti*2+(tj*2-1+i)*(xsections+2)]++;
+						vbnodes[ti*2+1+(tj*2-1+i)*(xsections+2)]++;
+					}
+				}
+			}
+			if(inputmode==1)
+			{
+				ti=Math.floor(ti/2.0);
+				tj=Math.floor(tj/2.0);
+				if(wallblocks[ti+tj*(xsections+2)]==0)
+				{
+					for(i=0;i<3;i++)
+					{
+						u[ti*2-1+i+tj*2*(xsections+2)]+=dt*mxspeed;
+						v[ti*2-1+i+(tj*2+1)*(xsections+2)]+=dt*myspeed;
+						u[ti*2+(tj*2-1+i)*(xsections+2)]+=dt*mxspeed;
+						v[ti*2+1+(tj*2-1+i)*(xsections+2)]+=dt*myspeed;
+					}
+				}
+			}
+			if(inputmode==2)
+			{
+				setDense(0,ti,tj,255);
+			}
+			if(inputmode==3)
+			{
+				ti=Math.floor(ti/2);
+				tj=Math.floor(tj/2);
+				{
+					temps[ti*2+tj*2*(xsections+2)]=400.0;
+					temps[ti*2+1+tj*2*(xsections+2)]=400.0;
+					temps[ti*2+(tj*2+1)*(xsections+2)]=400.0;
+					temps[ti*2+1+(tj*2+1)*(xsections+2)]=400.0;
+				}
+			}
+		}
+		bpd = 1000.0*sliderdp.checkMouse(mousepos);
+		udk = 1000.0*sliderudk.checkMouse(mousepos);
+		tdk = 1000.0*slidertdk.checkMouse(mousepos);
+		slipk = 1.0-sliderslipk.checkMouse(mousepos);
+		accg = 1000.0*slidertbouy.checkMouse(mousepos);
+		bouyred = 1000.0*sliderrbouy.checkMouse(mousepos);
+		bouyblue = 1000.0*sliderbbouy.checkMouse(mousepos);
+		inheat = 10.0*sliderinheat.checkMouse(mousepos);
+		fltemp = 400.0*sliderfltemp.checkMouse(mousepos);
+	}
+	if(mmbutton==1||bwkey==1)
+	{
+		var mxspeed = inputspeed*mouseindir[0];
+		var myspeed = inputspeed*mouseindir[1];
+		var ti = Math.floor((mousepos[0]-(c.width/2-(xsections+2)*ds/2))/ds);
+		var tj = Math.floor((mousepos[1]-(c.height-(ysections+2)*ds))/ds);
+		if((ti>0&&ti<xsections+1)&&(tj>0&&tj<ysections+1))
+		{
+			if(inputmode==0)
+			{
+				ti=Math.floor(ti/2);
+				tj=Math.floor(tj/2);
+				if(wallblocks[ti+tj*(xsections+2)]==1)
+				{
+					wallblocks[ti+tj*(xsections+2)]=0;
+					for(i=0;i<3;i++)
+					{
+						ubnodes[ti*2-1+i+tj*2*(xsections+2)]--;
+						ubnodes[ti*2-1+i+(tj*2+1)*(xsections+2)]--;
+						vbnodes[ti*2+(tj*2-1+i)*(xsections+2)]--;
+						vbnodes[ti*2+1+(tj*2-1+i)*(xsections+2)]--;
+					}
+				}
+			}
+			if(inputmode==1)
+			{
+				ti=Math.floor(ti/2);
+				tj=Math.floor(tj/2);
+				if(wallblocks[ti+tj*(xsections+2)]==0)
+				{
+					for(i=0;i<3;i++)
+					{
+						u[ti*2-1+i+tj*2*(xsections+2)]+=dt*mxspeed;
+						v[ti*2-1+i+(tj*2+1)*(xsections+2)]+=dt*myspeed;
+						u[ti*2+(tj*2-1+i)*(xsections+2)]+=dt*mxspeed;
+						v[ti*2+1+(tj*2-1+i)*(xsections+2)]+=dt*myspeed;
+					}
+				}
+			}
+			if(inputmode==2)
+			{
+				setDense(1,ti,tj,255);
+			}
+			if(inputmode==3)
+			{
+				ti=Math.floor(ti/2);
+				tj=Math.floor(tj/2);
+				{
+					temps[ti*2+tj*2*(xsections+2)]=0.0;
+					temps[ti*2+1+tj*2*(xsections+2)]=0.0;
+					temps[ti*2+(tj*2+1)*(xsections+2)]=0.0;
+					temps[ti*2+1+(tj*2+1)*(xsections+2)]=0.0;
+				}
+			}
+		}
+	}
+}
+
+function onMouseUp(event)
+{
+	if(event.button==0)
+	{
+		lmbutton=0;
+		if(btnlist[0].checkBounds(mousepos))
+			resetSim();
+		if(!bmobile)
+		{
+			if(btnlist[1].checkBounds(mousepos))
+				inputmode=0;
+			if(btnlist[2].checkBounds(mousepos))
+				inputmode=1;
+			if(btnlist[3].checkBounds(mousepos))
+				inputmode=2;
+			if(btnlist[4].checkBounds(mousepos))
+				inputmode=3;
+		}
+		if(btnlist[5].checkBounds(mousepos))
+		{
+			resetSim();
+			clearWalls();
+			cbdispdense.value=1;
+			cbdisppress.value=0;
+			cbdisptemp.value=0;
+			sliderdp.value=1.0;
+			bpd = 1000.0;
+			sliderudk.value=0.0;
+			udk=0.0;
+			slidertdk.value=0.0;
+			tdk=0.0;
+			sliderslipk.value=0.0;
+			slipk=1.0;
+			slidertbouy.value=0.0;
+			accg=0.0;
+			sliderbbouy.value=0.0;
+			bouyblue=0.0;
+			sliderrbouy.value=0.0;
+			bouyred=0.0;
+			sliderfltemp.value=0.0;
+			fltemp=0.0;
+			sliderinheat.value=0.0;
+			inheat=0.0;
+			if(!bmobile)
+			{
+				setWall(4,ysections/2);
+				setWall(4,ysections/2+2);
+				setWall(6,ysections/2-2);
+				setWall(6,ysections/2);
+				setWall(6,ysections/2+2);
+				setWall(6,ysections/2+4);
+				setWall(8,ysections/2-4);
+				setWall(8,ysections/2-2);
+				setWall(8,ysections/2);
+				setWall(8,ysections/2+2);
+				setWall(8,ysections/2+4);
+				setWall(8,ysections/2+6);
+				setWall(10,ysections/2-4);
+				setWall(10,ysections/2-2);
+				setWall(10,ysections/2);
+				setWall(10,ysections/2+2);
+				setWall(10,ysections/2+4);
+				setWall(10,ysections/2+6);
+				setWall(12,ysections/2-2);
+				setWall(12,ysections/2);
+				setWall(12,ysections/2+2);
+				setWall(12,ysections/2+4);
+				setWall(14,ysections/2);
+				setWall(14,ysections/2+2);
+				setVel(8,ysections/2+8,-400.0,0.0);
+				setVel(10,ysections/2+8,-400.0,0.0);
+				setVel(12,ysections/2+8,-400.0,0.0);
+				setVel(14,ysections/2+8,-400.0,0.0);
+				setVel(16,ysections/2+8,-400.0,0.0);
+				setVel(18,ysections/2+8,-400.0,0.0);
+			}
+			else
+			{
+				setWall(6,ysections/2);
+				setWall(6,ysections/2+2);
+				setVel(4,ysections/2+4,-400.0,0.0);
+				setVel(6,ysections/2+4,-400.0,0.0);
+				setVel(8,ysections/2+4,-400.0,0.0);
+			}
+		}
+		if(btnlist[6].checkBounds(mousepos))
+		{
+			resetSim();
+			clearWalls();
+			cbdispdense.value=0;
+			cbdisppress.value=0;
+			cbdisptemp.value=1;
+			sliderdp.value=0.0;
+			bpd = 0.0;
+			sliderudk.value=0.1;
+			udk=100.0;
+			slidertdk.value=0.1;
+			tdk=100.0;
+			sliderslipk.value=0.0;
+			slipk=1.0;
+			slidertbouy.value=0.5;
+			accg=500.0;
+			sliderbbouy.value=0.0;
+			bouyblue=0.0;
+			sliderrbouy.value=0.0;
+			bouyred=0.0;
+			sliderfltemp.value=0.25;
+			fltemp=100.0;
+			sliderinheat.value=0.0;
+			inheat=0.0;
+		}
+		if(btnlist[7].checkBounds(mousepos))
+		{
+			resetSim();
+			clearWalls();
+			cbdispdense.value=1;
+			cbdisppress.value=0;
+			cbdisptemp.value=0;
+			sliderdp.value=0.0;
+			bpd = 0.0;
+			sliderudk.value=0.0;
+			udk=0.0;
+			slidertdk.value=0.0;
+			tdk=0.0;
+			sliderslipk.value=0.0;
+			slipk=1.0;
+			slidertbouy.value=0.0;
+			accg=0.0;
+			sliderbbouy.value=0.5;
+			bouyblue=500.0;
+			sliderrbouy.value=0.0;
+			bouyred=0.0;
+			sliderfltemp.value=0.0;
+			fltemp=0.0;
+			sliderinheat.value=0.0;
+			inheat=0.0;
+			for(i=1;i<xsections+1;i++)
+			{
+				for(j=1;j<ysections+1;j++)
+				{
+					if(i<=xsections/4)
+						setDense(0,i,j,255);
+					else if(i>=xsections*3/4)
+						setDense(1,i,j,255);
+				}
+			}
+		}
+		if(btnlist[8].checkBounds(mousepos))
+		{
+			resetSim();
+			clearWalls();
+			cbdispdense.value=0;
+			cbdisppress.value=0;
+			cbdisptemp.value=1;
+			sliderdp.value=0.0;
+			bpd = 0.0;
+			sliderudk.value=0.1;
+			udk=100.0;
+			slidertdk.value=0.1;
+			tdk=100.0;
+			sliderslipk.value=0.0;
+			slipk=1.0;
+			slidertbouy.value=0.5;
+			accg=500.0;
+			sliderbbouy.value=0.0;
+			bouyblue=0.0;
+			sliderrbouy.value=0.0;
+			bouyred=0.0;
+			sliderfltemp.value=0.0;
+			fltemp=0.0;
+			sliderinheat.value=0.1;
+			inheat=1.0;
+			for(i=1;i<xsections+1;i++)
+			{
+				for(j=1;j<ysections+1;j++)
+				{
+					temps[i+j*(xsections+2)]+=20.0;
+				}
+			}
+		}
+		if(bmobile)
+			return;
+		if(cbdispdense.checkBounds(mousepos))
+		{
+			if(cbdispdense.value==0)
+			{
+				cbdispdense.value=1;
+				cbdisppress.value=0;
+				cbdisptemp.value=0;
+			}
+		}
+		if(cbdisppress.checkBounds(mousepos))
+		{
+			if(cbdisppress.value==0)
+			{
+				cbdispdense.value=0;
+				cbdisppress.value=1;
+				cbdisptemp.value=0;
+			}
+		}
+		if(cbdisptemp.checkBounds(mousepos))
+		{
+			if(cbdisptemp.value==0)
+			{
+				cbdispdense.value=0;
+				cbdisppress.value=0;
+				cbdisptemp.value=1;
+			}
+		}
+	}
+	if(event.button==1)
+		mmbutton=0;
+}
+
+function onMouseM(event)
+{
+	var rect = c.getBoundingClientRect();
+	var tmx = (event.clientX - rect.left)/(rect.right-rect.left) * c.width;
+	var tmy = (event.clientY - rect.top)/(rect.bottom-rect.top) * c.height;
+	mousexrel = tmx-mousepos[0];
+	mouseyrel = tmy-mousepos[1];
+	mousepos[0] = tmx;
+	mousepos[1] = tmy;
+	var mspeed = mousexrel*mousexrel+mouseyrel*mouseyrel;
+	if(mspeed>0.0001)
+	{
+		mspeed=Math.sqrt(mspeed);
+		mouseindir[0] = mousexrel/mspeed;
+		mouseindir[1] = mouseyrel/mspeed;
+	}
+}
+</script>
+</div>
+</body>
+</html>
